@@ -47,27 +47,53 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 import org.eclipse.jgit.errors.CorruptObjectException;
+import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.junit.JGitTestUtil;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.storage.file.WindowCacheConfig;
+import org.eclipse.jgit.storage.file.WindowCacheStats;
 import org.eclipse.jgit.test.resources.SampleDataRepositoryTestCase;
 import org.eclipse.jgit.util.MutableInteger;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+import org.junit.runners.Parameterized.Parameters;
 
+@RunWith(Parameterized.class)
 public class WindowCacheGetTest extends SampleDataRepositoryTestCase {
 	private List<TestObject> toLoad;
+	private WindowCacheConfig cfg;
+	private boolean useStrongRefs;
+	private File packDir;
+
+	@Parameters(name = "useStrongRefs={0}")
+	public static Collection<Object[]> data() {
+		return Arrays
+				.asList(new Object[][] { { Boolean.TRUE }, { Boolean.FALSE } });
+	}
+
+	public WindowCacheGetTest(Boolean useStrongRef) {
+		this.useStrongRefs = useStrongRef.booleanValue();
+	}
 
 	@Override
 	@Before
@@ -92,23 +118,38 @@ public class WindowCacheGetTest extends SampleDataRepositoryTestCase {
 			}
 		}
 		assertEquals(96, toLoad.size());
+		cfg = new WindowCacheConfig();
+		cfg.setPackedGitUseStrongRefs(useStrongRefs);
+
+		packDir = db.getObjectDatabase().getPackDirectory();;
 	}
 
 	@Test
 	public void testCache_Defaults() throws IOException {
-		WindowCacheConfig cfg = new WindowCacheConfig();
 		cfg.install();
 		doCacheTests();
 		checkLimits(cfg);
 
 		final WindowCache cache = WindowCache.getInstance();
-		assertEquals(6, cache.getOpenFiles());
-		assertEquals(17346, cache.getOpenBytes());
+		WindowCacheStats s = cache.getStats();
+		assertEquals(6, s.getOpenFileCount());
+		assertEquals(17346, s.getOpenByteCount());
+		assertEquals(0, s.getEvictionCount());
+		assertEquals(90, s.getHitCount());
+		assertTrue(s.getHitRatio() > 0.0 && s.getHitRatio() < 1.0);
+		assertEquals(6, s.getLoadCount());
+		assertEquals(0, s.getLoadFailureCount());
+		assertEquals(0, s.getLoadFailureRatio(), 0.001);
+		assertEquals(6, s.getLoadSuccessCount());
+		assertEquals(6, s.getMissCount());
+		assertTrue(s.getMissRatio() > 0.0 && s.getMissRatio() < 1.0);
+		assertEquals(96, s.getRequestCount());
+		assertTrue(s.getAverageLoadTime() > 0.0);
+		assertTrue(s.getTotalLoadTime() > 0.0);
 	}
 
 	@Test
 	public void testCache_TooFewFiles() throws IOException {
-		final WindowCacheConfig cfg = new WindowCacheConfig();
 		cfg.setPackedGitOpenFiles(2);
 		cfg.install();
 		doCacheTests();
@@ -117,7 +158,6 @@ public class WindowCacheGetTest extends SampleDataRepositoryTestCase {
 
 	@Test
 	public void testCache_TooSmallLimit() throws IOException {
-		final WindowCacheConfig cfg = new WindowCacheConfig();
 		cfg.setPackedGitWindowSize(4096);
 		cfg.setPackedGitLimit(4096);
 		cfg.install();
@@ -125,12 +165,54 @@ public class WindowCacheGetTest extends SampleDataRepositoryTestCase {
 		checkLimits(cfg);
 	}
 
+	@Test
+	public void testCache_CleanerTaskEnabled() throws IOException {
+		cfg.install();
+		doCacheTests();
+		removeUnderlyingPackFiles();
+
+		final WindowCache cache = WindowCache.getInstance();
+		WindowCacheStats s = cache.getStats();
+		s.resetCounters();
+
+		new WindowCache.WindowCacheCleaner(cfg).run();
+
+		doCacheTestsAfterCacheClean();
+
+		assertEquals(6, s.getEvictionCount());
+		assertEquals(0, s.getHitCount());
+		assertEquals(0, s.getLoadCount());
+		assertEquals(0, s.getLoadFailureCount());
+	}
+
 	private static void checkLimits(WindowCacheConfig cfg) {
 		final WindowCache cache = WindowCache.getInstance();
-		assertTrue(cache.getOpenFiles() <= cfg.getPackedGitOpenFiles());
-		assertTrue(cache.getOpenBytes() <= cfg.getPackedGitLimit());
-		assertTrue(0 < cache.getOpenFiles());
-		assertTrue(0 < cache.getOpenBytes());
+		WindowCacheStats s = cache.getStats();
+		assertTrue("average load time should be > 0",
+				0 < s.getAverageLoadTime());
+		assertTrue("open byte count should be > 0", 0 < s.getOpenByteCount());
+		assertTrue("eviction count should be >= 0", 0 <= s.getEvictionCount());
+		assertTrue("hit count should be > 0", 0 < s.getHitCount());
+		assertTrue("hit ratio should be > 0", 0 < s.getHitRatio());
+		assertTrue("hit ratio should be < 1", 1 > s.getHitRatio());
+		assertTrue("load count should be > 0", 0 < s.getLoadCount());
+		assertTrue("load failure count should be >= 0",
+				0 <= s.getLoadFailureCount());
+		assertTrue("load failure ratio should be >= 0",
+				0.0 <= s.getLoadFailureRatio());
+		assertTrue("load failure ratio should be < 1",
+				1 > s.getLoadFailureRatio());
+		assertTrue("load success count should be > 0",
+				0 < s.getLoadSuccessCount());
+		assertTrue("open byte count should be <= core.packedGitLimit",
+				s.getOpenByteCount() <= cfg.getPackedGitLimit());
+		assertTrue("open file count should be <= core.packedGitOpenFiles",
+				s.getOpenFileCount() <= cfg.getPackedGitOpenFiles());
+		assertTrue("miss success count should be >= 0", 0 <= s.getMissCount());
+		assertTrue("miss ratio should be > 0", 0 <= s.getMissRatio());
+		assertTrue("miss ratio should be < 1", 1 > s.getMissRatio());
+		assertTrue("request count should be > 0", 0 < s.getRequestCount());
+		assertTrue("total load time should be > 0", 0 < s.getTotalLoadTime());
 	}
 
 	private void doCacheTests() throws IOException {
@@ -139,6 +221,32 @@ public class WindowCacheGetTest extends SampleDataRepositoryTestCase {
 			assertNotNull(or);
 			assertEquals(o.type, or.getType());
 		}
+	}
+
+	private void doCacheTestsAfterCacheClean() throws IOException {
+		for (TestObject o : toLoad) {
+			try {
+				db.open(o.id, o.type);
+				fail("Exception should have been thrown, underlying files have been removed");
+			} catch (MissingObjectException e) {
+				assertEquals(e.getObjectId(), o.id);
+			}
+		}
+	}
+
+	private void removeUnderlyingPackFiles() {
+		Stream.of(Objects.requireNonNull(packDir.list()))
+		      .filter(filename -> filename.endsWith(".pack"))
+		      .forEach(filename ->  {
+		      	File toDelete = new File(packDir, filename);
+			      try {
+				      FileOutputStream fos = new FileOutputStream(toDelete);
+				      if (!toDelete.delete()) {
+				        fail("Failed to delete underlying packfile");
+				      }
+				      fos.getFD().sync();
+			      } catch (IOException e) {}
+		      });
 	}
 
 	private static class TestObject {

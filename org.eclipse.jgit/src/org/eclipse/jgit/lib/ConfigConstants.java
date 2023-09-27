@@ -200,6 +200,55 @@ public final class ConfigConstants {
 	/** The "streamFileThreshold" key */
 	public static final String CONFIG_KEY_STREAM_FILE_TRESHOLD = "streamFileThreshold";
 
+	/**
+	 * The "packedGitMmap" key
+	 * @since 5.1.13
+	 */
+	public static final String CONFIG_KEY_PACKED_GIT_MMAP = "packedgitmmap";
+
+	/**
+	 * The "packedGitWindowSize" key
+	 * @since 5.1.13
+	 */
+	public static final String CONFIG_KEY_PACKED_GIT_WINDOWSIZE = "packedgitwindowsize";
+
+	/**
+	 * The "packedGitLimit" key
+	 * @since 5.1.13
+	 */
+	public static final String CONFIG_KEY_PACKED_GIT_LIMIT = "packedgitlimit";
+
+	/**
+	 * The "packedGitOpenFiles" key
+	 * @since 5.1.13
+	 */
+	public static final String CONFIG_KEY_PACKED_GIT_OPENFILES = "packedgitopenfiles";
+
+	/**
+	 * The "packedGitOpenFilesCacheCleanEnabled" key
+	 * @since 5.1.13
+	 */
+	public static final String CONFIG_KEY_PACKED_GIT_OPENFILES_CACHE_CLEAN_ENABLED =
+			"packedgitopenfilescachecleanenabled";
+
+	/**
+	 * The "packedGitOpenFilesCacheCleanDelay" key
+	 * @since 5.1.13
+	 */
+	public static final String CONFIG_KEY_PACKED_GIT_OPENFILES_CACHE_CLEAN_DELAY = "packedgitopenfilescachecleandelay";
+
+	/**
+	 * The "packedGitOpenFilesCacheCleanPeriod" key
+	 * @since 5.1.13
+	 */
+	public static final String CONFIG_KEY_PACKED_GIT_OPENFILES_CACHE_CLEAN_PEROD = "packedgitopenfilescachecleanperiod";
+
+	/**
+	 * The "packedGitUseStrongRefs" key
+	 * @since 5.1.13
+	 */
+	public static final String CONFIG_KEY_PACKED_GIT_USE_STRONGREFS = "packedgitusestrongrefs";
+
 	/** The "remote" key */
 	public static final String CONFIG_KEY_REMOTE = "remote";
 
@@ -434,6 +483,12 @@ public final class ConfigConstants {
 	public static final String CONFIG_SECTION_LFS = "lfs";
 
 	/**
+	 * The Git MultiSite Replication section
+	 */
+	public static final String GITMSCONFIG = "gitmsconfig";
+
+
+	/**
 	 * The "filesystem" section
 	 * @since 5.1.9
 	 */
@@ -451,4 +506,10 @@ public final class ConfigConstants {
 	 * @since 5.1.9
 	 */
 	public static final String CONFIG_KEY_MIN_RACY_THRESHOLD = "minRacyThreshold";
+
+	/**
+	 * The "jmx" section
+	 * @since 5.1.13
+	 */
+	public static final String CONFIG_JMX_SECTION = "jmx";
 }
